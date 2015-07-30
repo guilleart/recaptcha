@@ -62,7 +62,7 @@ module Recaptcha
       return (html.respond_to?(:html_safe) && html.html_safe) || html
     end
 
-    def v2_tags(options)
+    def v2_tags(options = {stoken: true})
       public_key   = options[:public_key] ||= Recaptcha.configuration.public_key
       raise RecaptchaError, "No public key specified." unless public_key
       private_key  = options[:private_key] ||= Recaptcha.configuration.private_key
@@ -73,19 +73,22 @@ module Recaptcha
       
       v2_options = options.slice(:theme, :type, :callback, :expired_callback).map {|k,v| %{data-#{k.to_s.gsub(/_/,'-')}="#{v}"} }.join(" ")
 
-      stoken_json = hash_to_json({'session_id' => SecureRandom.uuid, 'ts_ms' => (Time.now.to_f * 1000).to_i})
-      cipher = OpenSSL::Cipher::AES128.new(:ECB)
-      private_key_digest = Digest::SHA1.digest(private_key)[0...16]
+      if options[:stoken]
+        stoken_json = hash_to_json({'session_id' => SecureRandom.uuid, 'ts_ms' => (Time.now.to_f * 1000).to_i})
+        cipher = OpenSSL::Cipher::AES128.new(:ECB)
+        private_key_digest = Digest::SHA1.digest(private_key)[0...16]
 
-      cipher.encrypt
-      cipher.key = private_key_digest
-      encrypted_stoken = cipher.update(stoken_json) << cipher.final
-      encoded_stoken = Base64.urlsafe_encode64(encrypted_stoken).gsub(/\=+\Z/, '')
+        cipher.encrypt
+        cipher.key = private_key_digest
+        encrypted_stoken = cipher.update(stoken_json) << cipher.final
+        encoded_stoken = Base64.urlsafe_encode64(encrypted_stoken).gsub(/\=+\Z/, '')
+      end
 
       html = ""
       html << %{<script src="#{uri}" async defer></script>\n}
-      html << %{<div class="g-recaptcha" data-sitekey="#{public_key}" data-stoken="#{encoded_stoken}" #{v2_options}></div>\n}
-    
+      html << %{<div class="g-recaptcha" data-sitekey="#{public_key}"}
+      html << %{data-stoken="#{encoded_stoken}"} if options[:stoken]
+      html << %{#{v2_options}></div>\n}
       unless options[:noscript] == false
         fallback_uri = "#{uri.chomp('.js')}/fallback?k=#{public_key}"
         html << %{<noscript>}
